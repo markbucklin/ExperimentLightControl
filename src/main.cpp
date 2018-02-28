@@ -1,11 +1,16 @@
 #include <Arduino.h>
+#include <math.h>
 
 // Control
 
 #include <Encoder.h>
 const int ENCODER_PIN_BUTTON = 16;
-const int ENCODER_PIN_A = 17;
-const int ENCODER_PIN_B = 18;
+const int ENCODER_PIN_A = 18;
+const int ENCODER_PIN_B = 17;
+const int ENCODER_COUNTS_PER_REV = 80;
+const int ENCODER_COUNTS_PER_DETENT = 4;
+const int ENCODER_DETENTS_PER_REV =
+    ENCODER_COUNTS_PER_REV / ENCODER_COUNTS_PER_DETENT;
 Encoder encoder(ENCODER_PIN_A, ENCODER_PIN_B);
 
 // LED
@@ -15,6 +20,9 @@ const int LED_PIN = 10;
 byte drawingMemory[LED_COUNT * 3];          //  3 bytes per LED
 DMAMEM byte displayMemory[LED_COUNT * 12];  // 12 bytes per LED
 WS2812Serial leds(LED_COUNT, displayMemory, drawingMemory, LED_PIN, WS2812_GRB);
+
+inline bool wrap(auto *unwrappedInput, const auto wrapLimit);
+inline float normalizeEncoderPosition(const auto encoderCount);
 
 #define RED 0xFF0000
 #define GREEN 0x00FF00
@@ -45,12 +53,15 @@ void setup() {
 
 void loop() {
   // Read Encoder
-  static long encoderPosition = 0;
+  static long priorPosition = 0;
   long newPosition = encoder.read();
-  if (newPosition != encoderPosition) {
-    Serial.println(newPosition);
-    encoderPosition = newPosition;
+  if (newPosition != priorPosition) {
+    if (wrap(&newPosition, ENCODER_COUNTS_PER_REV / 2)) {
+      encoder.write(newPosition);
+    }
+    Serial.println(normalizeEncoderPosition(newPosition), 3);
   }
+  priorPosition = newPosition;
 
   // Update LEDs
   for (int i = 0; i < leds.numPixels(); i++) {
@@ -61,4 +72,20 @@ void loop() {
     }
   }
   leds.show();
+}
+
+inline bool wrap(auto *unwrappedInput, const auto wrapLimit) {
+  // wraps input to within range of +/- wrapLimit
+  bool isChanged = false;
+  while (abs(*unwrappedInput) > wrapLimit) {
+    *unwrappedInput -= copysign(2 * wrapLimit, *unwrappedInput);
+    isChanged = true;
+  }
+  return isChanged;
+}
+
+inline float normalizeEncoderPosition(const auto encoderCount) {
+  // maps rotary encoder count to normalized position in rotation
+  float normAngle = (float)encoderCount / ENCODER_COUNTS_PER_REV;
+  return normAngle;
 }
