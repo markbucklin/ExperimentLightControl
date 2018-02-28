@@ -89,28 +89,34 @@ void loop() {
   // / 2);
   auto sourceLeftBound = lightSource.angle - lightSource.width / 2;
   auto sourceRightBound = lightSource.angle + lightSource.width / 2;
-  wrap(&sourceLeftBound, .5);
-  wrap(&sourceRightBound, .5);
+  // wrap(&sourceLeftBound, .5);
+  // wrap(&sourceRightBound, .5);
   auto ledLeftBound = map(sourceLeftBound, -1, 1, -LED_COUNT, LED_COUNT);
   auto ledRightBound = map(sourceRightBound, -1, 1, -LED_COUNT, LED_COUNT);
 
   // Update ledStrip
   if (ledControl.on) {
     // Most common case -> not wrapping around ends of strip
-    const auto *pxLower = &ledLeftBound;
-    const auto *pxUpper = &ledRightBound;
-    if (sourceLeftBound > sourceRightBound) {
+    auto *pxLower = &ledLeftBound;
+    auto *pxUpper = &ledRightBound;
+    wrap(pxUpper, LED_COUNT / 2);
+    wrap(pxLower, LED_COUNT / 2);
+    auto inBtwVal = lightSource.color;
+    auto outBtwVal = 0;
+    if ((*pxLower) > (*pxUpper)) {
       // Switch upper and lower limit
       pxUpper = &ledLeftBound;
       pxLower = &ledRightBound;
+      outBtwVal = inBtwVal;
+      inBtwVal = 0;
     }
     for (int i = 0; i < ledStrip.numPixels(); i++) {
       auto pxPosition = i - LED_COUNT / 2;
       // Check if pixel at current index [i] is in range around angle
       if (pxPosition >= *pxLower && pxPosition <= *pxUpper) {
-        ledStrip.setPixel(i, lightSource.color);
+        ledStrip.setPixel(i, inBtwVal);
       } else {
-        ledStrip.setPixel(i, 0);
+        ledStrip.setPixel(i, outBtwVal);
       }
     }
   } else {
