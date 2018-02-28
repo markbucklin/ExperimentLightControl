@@ -6,20 +6,15 @@
 const int ENCODER_PIN_BUTTON = 16;
 const int ENCODER_PIN_A = 17;
 const int ENCODER_PIN_B = 18;
-pinMode(14, OUT);
-pinMode(15, OUT);
-digitalWrite(14, LOW);
-digitalWrite(15, HIGH);
-pinMode(ENCODER_PIN_BUTTON, INPUT_PULLUP);
 Encoder encoder(ENCODER_PIN_A, ENCODER_PIN_B);
 
 // LED
 #include <WS2812Serial.h>
-const int numled = 64;
-const int pin = 10;
-byte drawingMemory[numled * 3];          //  3 bytes per LED
-DMAMEM byte displayMemory[numled * 12];  // 12 bytes per LED
-WS2812Serial leds(numled, displayMemory, drawingMemory, pin, WS2812_GRB);
+const int LED_COUNT = 64;
+const int LED_PIN = 10;
+byte drawingMemory[LED_COUNT * 3];          //  3 bytes per LED
+DMAMEM byte displayMemory[LED_COUNT * 12];  // 12 bytes per LED
+WS2812Serial leds(LED_COUNT, displayMemory, drawingMemory, LED_PIN, WS2812_GRB);
 
 #define RED 0xFF0000
 #define GREEN 0x00FF00
@@ -29,13 +24,21 @@ WS2812Serial leds(numled, displayMemory, drawingMemory, pin, WS2812_GRB);
 #define ORANGE 0xE05800
 #define WHITE 0xFFFFFF
 int currentColor = BLUE;
-bool currentState[numled];
+bool currentState[LED_COUNT];
 
 // Setup
 void setup() {
   delay(200);
   Serial.begin(115200);
 
+  // Encoder Pins
+  pinMode(14, OUTPUT);
+  pinMode(15, OUTPUT);
+  digitalWrite(14, LOW);
+  digitalWrite(15, HIGH);
+  pinMode(ENCODER_PIN_BUTTON, INPUT_PULLUP);
+
+  // LED Setup
   leds.begin();
   delay(10);
 }
@@ -45,7 +48,7 @@ void loop() {
   static long encoderPosition = 0;
   long newPosition = encoder.read();
   if (newPosition != encoderPosition) {
-    Serial.println(newPostion);
+    Serial.println(newPosition);
     encoderPosition = newPosition;
   }
 
