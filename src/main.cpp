@@ -34,7 +34,7 @@ const uint32_t colorOption[] = {RED, GREEN, BLUE, YELLOW, PINK, ORANGE, WHITE};
 typedef uint32_t color_t;
 typedef struct {
   const WS2812Serial &strip;
-  bool on;
+  volatile bool on;
 } led_control_t;
 led_control_t ledControl = {ledStrip, true};
 
@@ -84,25 +84,51 @@ void loop() {
 
   // Calculate Updated Angle/Boundaries
   lightSource.angle = normalizeEncoderPosition(newPosition);
-  auto sourceLeftBound = max(-0.5, lightSource.angle - lightSource.width / 2);
-  auto sourceRightBound = min(0.5, lightSource.angle + lightSource.width / 2);
+  // auto sourceLeftBound = max(-0.5, lightSource.angle - lightSource.width /
+  // 2); auto sourceRightBound = min(0.5, lightSource.angle + lightSource.width
+  // / 2);
+  auto sourceLeftBound = lightSource.angle - lightSource.width / 2;
+  auto sourceRightBound = lightSource.angle + lightSource.width / 2;
+  wrap(&sourceLeftBound, .5);
+  wrap(&sourceRightBound, .5);
   auto ledLeftBound = map(sourceLeftBound, -1, 1, -LED_COUNT, LED_COUNT);
   auto ledRightBound = map(sourceRightBound, -1, 1, -LED_COUNT, LED_COUNT);
 
   // Update ledStrip
-  for (int i = 0; i < ledStrip.numPixels(); i++) {
-    auto pxPosition = i - LED_COUNT / 2 + 0.5;
-    if (pxPosition >= ledLeftBound && pxPosition <= ledRightBound &&
-        ledControl.on) {
-      ledStrip.setPixel(i, lightSource.color);
-    } else {
+  if (ledControl.on) {
+    for (int i = 0; i < ledStrip.numPixels(); i++) {
+      auto pxPosition = i - LED_COUNT / 2;
+      const auto &pxLower;
+      const auto &pxUpper;
+      if (sourceLeftBound < sourceRightBound) {
+        // Most common case -> not wrapping around ends of strip
+        pxLower = sourceLeftBound;
+        pxUpper = sourceRightBound;
+      } else {
+        // Switch upper and lower limit
+        pxUpper = sourceLeftBound;
+        pxLower = sourceRightBound;
+      }
+      // Check if pixel at current index [i] is in range around angle
+      if (pxPosition >= pxLower && pxPosition <= pxUpper) {
+        ledStrip.setPixel(i, lightSource.color);
+      } else {
+        ledStrip.setPixel(i, 0);
+      }
+    }
+  } else {
+    for (int i = 0; i < ledStrip.numPixels(); i++) {
       ledStrip.setPixel(i, 0);
     }
   }
   Serial.print(lightSource.angle);
+  Serial.print(" ");
   Serial.print(sourceLeftBound);
+  Serial.print(" ");
   Serial.print(ledLeftBound);
+  Serial.print(" ");
   Serial.print(sourceRightBound);
+  Serial.print(" ");
   Serial.println(ledRightBound);
   ledStrip.show();
 }
@@ -123,16 +149,24 @@ inline float normalizeEncoderPosition(const auto encoderCount) {
   return normAngle;
 }
 
-elapsedMicros downUpMicros;
-void handleEncoderButtonDown(void) { downUpMicros = 0; }
+// volatile elapsedMicros downUpMicros;
+volatile uint32_t downMicros;
+void handleEncoderButtonDown(void) {
+  // downUpMicros = 0;
+  downMicros = micros();
+}
 void handleEncoderButtonUp(void) {
-  if (downUpMicros < 100000) {
+  // if (downUpMicros < 300000) {
+  int32_t us = micros() - downMicros;
+  if (us < 3000000) {
     // Toggle Led On State
     ledControl.on = !ledControl.on;
+    return;
   } else {
     // Toggle Color
     static int currentColorIndex = 0;
     currentColorIndex = (currentColorIndex + 1) % 7;
     lightSource.color = colorOption[currentColorIndex];
+    // ledControl.on = true;
   }
 }
