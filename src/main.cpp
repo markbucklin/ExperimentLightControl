@@ -92,7 +92,8 @@ void loop() {
   // Update ledStrip
   for (int i = 0; i < ledStrip.numPixels(); i++) {
     auto pxPosition = i - LED_COUNT / 2 + 0.5;
-    if (pxPosition >= ledLeftBound && pxPosition <= ledRightBound) {
+    if (pxPosition >= ledLeftBound && pxPosition <= ledRightBound &&
+        ledControl.on) {
       ledStrip.setPixel(i, lightSource.color);
     } else {
       ledStrip.setPixel(i, 0);
