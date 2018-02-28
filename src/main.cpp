@@ -29,7 +29,8 @@ WS2812Serial ledStrip(LED_COUNT, displayMemory, drawingMemory, LED_PIN,
 #define PINK 0xFF1088
 #define ORANGE 0xE05800
 #define WHITE 0xFFFFF
-
+const uint32_t colorOption[] = {RED, GREEN, BLUE, YELLOW, PINK, ORANGE, WHITE};
+// TODO
 typedef uint32_t color_t;
 typedef struct {
   const WS2812Serial &strip;
@@ -47,6 +48,8 @@ radial_light_source_t lightSource = {0, 0.2, RED};
 // Function Declarations
 inline bool wrap(auto *unwrappedInput, const auto wrapLimit);
 inline float normalizeEncoderPosition(const auto encoderCount);
+void handleEncoderButtonDown(void);
+void handleEncoderButtonUp(void);
 
 // Setup
 void setup() {
@@ -59,6 +62,8 @@ void setup() {
   digitalWrite(14, LOW);
   digitalWrite(15, HIGH);
   pinMode(ENCODER_PIN_BUTTON, INPUT_PULLUP);
+  attachInterrupt(ENCODER_PIN_BUTTON, handleEncoderButtonDown, FALLING);
+  attachInterrupt(ENCODER_PIN_BUTTON, handleEncoderButtonUp, RISING);
 
   // LED Setup
   ledStrip.begin();
@@ -93,7 +98,10 @@ void loop() {
       ledStrip.setPixel(i, 0);
     }
   }
+  Serial.print(lightSource.angle);
+  Serial.print(sourceLeftBound);
   Serial.print(ledLeftBound);
+  Serial.print(sourceRightBound);
   Serial.println(ledRightBound);
   ledStrip.show();
 }
@@ -112,4 +120,18 @@ inline float normalizeEncoderPosition(const auto encoderCount) {
   // maps rotary encoder count to normalized position in rotation
   float normAngle = (float)encoderCount / ENCODER_COUNTS_PER_REV;
   return normAngle;
+}
+
+elapsedMicros downUpMicros;
+void handleEncoderButtonDown(void) { downUpMicros = 0; }
+void handleEncoderButtonUp(void) {
+  if (downUpMicros < 100000) {
+    // Toggle Led On State
+    ledControl.on = !ledControl.on;
+  } else {
+    // Toggle Color
+    static int currentColorIndex = 0;
+    currentColorIndex = (currentColorIndex + 1) % 7;
+    lightSource.color = colorOption[currentColorIndex];
+  }
 }
