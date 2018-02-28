@@ -19,10 +19,8 @@ const int LED_COUNT = 64;
 const int LED_PIN = 10;
 byte drawingMemory[LED_COUNT * 3];          //  3 bytes per LED
 DMAMEM byte displayMemory[LED_COUNT * 12];  // 12 bytes per LED
-WS2812Serial leds(LED_COUNT, displayMemory, drawingMemory, LED_PIN, WS2812_GRB);
-
-inline bool wrap(auto *unwrappedInput, const auto wrapLimit);
-inline float normalizeEncoderPosition(const auto encoderCount);
+WS2812Serial ledStrip(LED_COUNT, displayMemory, drawingMemory, LED_PIN,
+                      WS2812_GRB);
 
 #define RED 0xFF0000
 #define GREEN 0x00FF00
@@ -30,9 +28,25 @@ inline float normalizeEncoderPosition(const auto encoderCount);
 #define YELLOW 0xFFFF00
 #define PINK 0xFF1088
 #define ORANGE 0xE05800
-#define WHITE 0xFFFFFF
-int currentColor = BLUE;
-bool currentState[LED_COUNT];
+#define WHITE 0xFFFFF
+
+typedef uint32_t color_t;
+typedef struct {
+  const WS2812Serial &strip;
+  bool on;
+} led_control_t;
+led_control_t ledControl = {ledStrip, true};
+
+typedef struct {
+  float angle;
+  float width;
+  color_t color;
+} radial_light_source_t;
+radial_light_source_t lightSource = {0, 0.2, RED};
+
+// Function Declarations
+inline bool wrap(auto *unwrappedInput, const auto wrapLimit);
+inline float normalizeEncoderPosition(const auto encoderCount);
 
 // Setup
 void setup() {
@@ -47,7 +61,7 @@ void setup() {
   pinMode(ENCODER_PIN_BUTTON, INPUT_PULLUP);
 
   // LED Setup
-  leds.begin();
+  ledStrip.begin();
   delay(10);
 }
 
@@ -59,19 +73,29 @@ void loop() {
     if (wrap(&newPosition, ENCODER_COUNTS_PER_REV / 2)) {
       encoder.write(newPosition);
     }
-    Serial.println(normalizeEncoderPosition(newPosition), 3);
+    // Serial.println(normalizeEncoderPosition(newPosition), 3);
   }
   priorPosition = newPosition;
 
-  // Update LEDs
-  for (int i = 0; i < leds.numPixels(); i++) {
-    if (currentState[i]) {
-      leds.setPixel(i, currentColor);
+  // Calculate Updated Angle/Boundaries
+  lightSource.angle = normalizeEncoderPosition(newPosition);
+  auto sourceLeftBound = max(-0.5, lightSource.angle - lightSource.width / 2);
+  auto sourceRightBound = min(0.5, lightSource.angle + lightSource.width / 2);
+  auto ledLeftBound = map(sourceLeftBound, -1, 1, -LED_COUNT, LED_COUNT);
+  auto ledRightBound = map(sourceRightBound, -1, 1, -LED_COUNT, LED_COUNT);
+
+  // Update ledStrip
+  for (int i = 0; i < ledStrip.numPixels(); i++) {
+    auto pxPosition = i - LED_COUNT / 2 + 0.5;
+    if (pxPosition >= ledLeftBound && pxPosition <= ledRightBound) {
+      ledStrip.setPixel(i, lightSource.color);
     } else {
-      leds.setPixel(i, 0);
+      ledStrip.setPixel(i, 0);
     }
   }
-  leds.show();
+  Serial.print(ledLeftBound);
+  Serial.println(ledRightBound);
+  ledStrip.show();
 }
 
 inline bool wrap(auto *unwrappedInput, const auto wrapLimit) {
