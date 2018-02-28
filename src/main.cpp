@@ -1,7 +1,17 @@
 #include <Arduino.h>
 
 // Control
+
 #include <Encoder.h>
+const int ENCODER_PIN_BUTTON = 16;
+const int ENCODER_PIN_A = 17;
+const int ENCODER_PIN_B = 18;
+pinMode(14, OUT);
+pinMode(15, OUT);
+digitalWrite(14, LOW);
+digitalWrite(15, HIGH);
+pinMode(ENCODER_PIN_BUTTON, INPUT_PULLUP);
+Encoder encoder(ENCODER_PIN_A, ENCODER_PIN_B);
 
 // LED
 #include <WS2812Serial.h>
@@ -31,6 +41,14 @@ void setup() {
 }
 
 void loop() {
+  // Read Encoder
+  static long encoderPosition = 0;
+  long newPosition = encoder.read();
+  if (newPosition != encoderPosition) {
+    Serial.println(newPostion);
+    encoderPosition = newPosition;
+  }
+
   // Update LEDs
   for (int i = 0; i < leds.numPixels(); i++) {
     if (currentState[i]) {
@@ -40,110 +58,4 @@ void loop() {
     }
   }
   leds.show();
-  delayMicroseconds(1000);
 }
-
-// void handler(char **tokens, byte numtokens) {
-//   Serial.print(numtokens);
-//   Serial.print(" tokens: ");
-//   for (int token = 0; token < numtokens; token++) {
-//     if (token != 0) Serial.print(", ");
-//     Serial.print(tokens[token]);
-//   }
-//   Serial.println();
-
-//   switch (tokens[0][0]) {
-//     case 'h': {
-//       dev->println(
-//           "led-on <num1> <num2> - turn LEDs <num1> and <num2> on (variable "
-//           "argument number)");
-//       dev->println("led-on - turn all LEDs on");
-//       dev->println("led-off - turn all LEDs off");
-//       break;
-//     }
-//     case 'a': {
-//       if (numtokens < 2) return;
-//       uint16_t value = atoi(tokens[1]);
-//       Serial.print("* Sensor request to: ");
-//       Serial.println(value);
-//       break;
-//       // if (argc == 1) {
-//       //   memset(currentState, true, sizeof(bool) * numled);
-//       // } else {
-//       //   for (int i = 1; i < argc; i++) {
-//       //     int ledNum = atoi(argv[i]);
-//       //     currentState[ledNum - 1] = true;
-//       //   }
-//       // }
-//     }
-//   }
-//   //   if (argc == 1) {
-//   //   dev->println("must specify color");
-//   //   // if (argc == 2) {
-//   //   currentColor = atoi(argv[1]);
-//   //   // }
-//   // }
-// }
-
-//  CLI.setDefaultPrompt("> ");
-//   CLI.onConnect(connectFunc);
-
-//   CLI.addCommand("led-on", ledOnFunc);
-//   CLI.addCommand("led-off", ledOffFunc);
-//   CLI.addCommand("led-color", ledColorFunc);
-//   CLI.addCommand("help", helpFunc);
-
-//   CLI.addClient(Serial);
-
-// CLI_COMMAND(ledOnFunc) {
-//   if (argc == 1) {
-//     memset(currentState, true, sizeof(bool) * numled);
-//   } else {
-//     for (int i = 1; i < argc; i++) {
-//       int ledNum = atoi(argv[i]);
-//       currentState[ledNum - 1] = true;
-//     }
-//   }
-//   return 0;
-// }
-
-// CLI_COMMAND(ledOffFunc) {
-//   if (argc == 1) {
-//     memset(currentState, false, sizeof(bool) * numled);
-//   } else {
-//     for (int i = 1; i < argc; i++) {
-//       int ledNum = atoi(argv[i]);
-//       currentState[ledNum - 1] = false;
-//     }
-//   }
-//   return 0;
-// }
-
-// CLI_COMMAND(ledColorFunc) {
-//   if (argc == 1) {
-//     dev->println("must specify color");
-//     return 10;
-//   } else {
-//     // if (argc == 2) {
-//     currentColor = atoi(argv[1]);
-//     return 0;
-//     // } else {
-//     // }
-//   }
-// }
-
-// CLI_COMMAND(helpFunc) {
-//   dev->println(
-//       "led-on <num1> <num2> - turn LEDs <num1> and <num2> on (variable "
-//       "argument number)");
-//   dev->println("led-on - turn all LEDs on");
-//   dev->println("led-off - turn all LEDs off");
-//   return 0;
-// }
-
-// CLI_COMMAND(connectFunc) {
-//   dev->println("LED Control");
-//   dev->println("Type 'help' to list commands.");
-//   dev->println();
-//   dev->printPrompt();
-// }
