@@ -97,12 +97,12 @@ void loop() {
   // Update ledStrip
   if (ledControl.on) {
     // Most common case -> not wrapping around ends of strip
-    const auto *pxLower = &sourceLeftBound;
-    const auto *pxUpper = &sourceRightBound;
+    const auto *pxLower = &ledLeftBound;
+    const auto *pxUpper = &ledRightBound;
     if (sourceLeftBound > sourceRightBound) {
       // Switch upper and lower limit
-      pxUpper = &sourceLeftBound;
-      pxLower = &sourceRightBound;
+      pxUpper = &ledLeftBound;
+      pxLower = &ledRightBound;
     }
     for (int i = 0; i < ledStrip.numPixels(); i++) {
       auto pxPosition = i - LED_COUNT / 2;
