@@ -96,21 +96,18 @@ void loop() {
 
   // Update ledStrip
   if (ledControl.on) {
+    // Most common case -> not wrapping around ends of strip
+    const auto *pxLower = &sourceLeftBound;
+    const auto *pxUpper = &sourceRightBound;
+    if (sourceLeftBound > sourceRightBound) {
+      // Switch upper and lower limit
+      pxUpper = &sourceLeftBound;
+      pxLower = &sourceRightBound;
+    }
     for (int i = 0; i < ledStrip.numPixels(); i++) {
       auto pxPosition = i - LED_COUNT / 2;
-      const auto &pxLower;
-      const auto &pxUpper;
-      if (sourceLeftBound < sourceRightBound) {
-        // Most common case -> not wrapping around ends of strip
-        pxLower = sourceLeftBound;
-        pxUpper = sourceRightBound;
-      } else {
-        // Switch upper and lower limit
-        pxUpper = sourceLeftBound;
-        pxLower = sourceRightBound;
-      }
       // Check if pixel at current index [i] is in range around angle
-      if (pxPosition >= pxLower && pxPosition <= pxUpper) {
+      if (pxPosition >= *pxLower && pxPosition <= *pxUpper) {
         ledStrip.setPixel(i, lightSource.color);
       } else {
         ledStrip.setPixel(i, 0);
@@ -150,23 +147,31 @@ inline float normalizeEncoderPosition(const auto encoderCount) {
 }
 
 // volatile elapsedMicros downUpMicros;
-volatile uint32_t downMicros;
+volatile uint32_t downMicros = micros();
 void handleEncoderButtonDown(void) {
   // downUpMicros = 0;
-  downMicros = micros();
+  uint32_t currentMicros = micros();
+  // Debounce button hold timer
+  if ((currentMicros - downMicros) > 1000) {
+    downMicros = micros();
+  }
 }
 void handleEncoderButtonUp(void) {
   // if (downUpMicros < 300000) {
   int32_t us = micros() - downMicros;
-  if (us < 3000000) {
-    // Toggle Led On State
-    ledControl.on = !ledControl.on;
+  if (us < 1000) {
+    // Debounce Button up interrupt
     return;
   } else {
-    // Toggle Color
-    static int currentColorIndex = 0;
-    currentColorIndex = (currentColorIndex + 1) % 7;
-    lightSource.color = colorOption[currentColorIndex];
-    // ledControl.on = true;
+    if (us < 100000) {
+      // Toggle Led On State
+      ledControl.on = !ledControl.on;
+    } else {
+      // Toggle Color
+      static int currentColorIndex = 0;
+      currentColorIndex = (currentColorIndex + 1) % 7;
+      lightSource.color = colorOption[currentColorIndex];
+      // ledControl.on = true;
+    }
   }
 }
