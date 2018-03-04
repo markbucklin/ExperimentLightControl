@@ -131,8 +131,11 @@ static inline void beginAcquisition(void) {
 }
 static inline void beginDataFrame(void) {
   // Latch timestamp and designate/allocate current sample
-  microsSinceFrameStart -= currentFrameDuration;
   currentFrameTimestamp = microsSinceAcquisitionStart;
+  // Gapless update of time-since-frame-start from prior duration
+  microsSinceFrameStart -= currentFrameDuration;
+  // microsSinceFrameStart = microsSinceAcquisitionStart -
+  // currentFrameTimestamp; Increment Frame Counter
   currentFrameCount++;
 }
 static inline void endDataFrame(void) {
