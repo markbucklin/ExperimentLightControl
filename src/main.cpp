@@ -1,3 +1,7 @@
+// Experiment Light Control
+// Mark Bucklin
+// March 4, 2018
+
 #include <Arduino.h>
 #include <math.h>
 
