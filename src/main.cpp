@@ -2,13 +2,11 @@
 #include <math.h>
 
 // Control
-
 #include <Encoder.h>
 const int ENCODER_PIN_BUTTON = 16;
 const int ENCODER_PIN_A = 18;
 const int ENCODER_PIN_B = 17;
 const int ENCODER_COUNTS_PER_REV = 80;
-const int ENCODER_COUNTS_PER_DETENT = 4;
 Encoder encoder(ENCODER_PIN_A, ENCODER_PIN_B);
 
 // ON/OFF Button
@@ -16,6 +14,9 @@ const int ONOFF_BUTTON_PIN = 21;
 
 // TRIGGER INPUT
 const int TRIGGER_INPUT_PIN = 0;
+volatile bool isRunning = false;
+elapsedMicros usSinceStart;
+volatile uint32_t startTimeMicros;
 
 // LED
 #include <WS2812Serial.h>
@@ -45,19 +46,25 @@ typedef struct {
 } radial_light_source_t;
 radial_light_source_t lightSource = {0, 0.2, RED, true};
 
-// // Function Declarations
-inline bool wrap(auto *unwrappedInput, const auto wrapLimit);
+// =============================================================================
+// Function Declarations
+// =============================================================================
+static inline bool wrap(auto *unwrappedInput, const auto wrapLimit);
 inline float normalizeEncoderPosition(const auto encoderCount);
-void toggleColor(void);
-void handleButtonDown(void);
-void handleButtonUp(void);
-void handleTriggerInput(void);
+static inline void toggleColor(void);
+void handleTriggerRisingEdge(void);
+void handleTriggerFallingEdge(void);
+static inline void startAcquisition(void);
+static inline void stopAcquisition(void);
+static void sendHeader();
+static void sendData();
 
-// Setup
+// =============================================================================
+// Setup & Loop
+// =============================================================================
 void setup() {
   // delay(200);
   Serial.begin(115200);
-  Serial.println("serialstarted");
 
   // Encoder Pins
   pinMode(15, OUTPUT);
@@ -70,11 +77,10 @@ void setup() {
   pinMode(ONOFF_BUTTON_PIN - 1, OUTPUT);  // gnd
   digitalWrite(ONOFF_BUTTON_PIN - 1, LOW);
   pinMode(ONOFF_BUTTON_PIN, INPUT_PULLUP);
-  // attachInterrupt(ONOFF_BUTTON_PIN, handleButtonDown, FALLING);
-  // attachInterrupt(ONOFF_BUTTON_PIN, handleButtonUp, RISING);
 
   // Trigger Input
   pinMode(TRIGGER_INPUT_PIN, INPUT);
+  attachInterrupt(TRIGGER_INPUT_PIN, handleTriggerRisingEdge, RISING);
 
   // LED Setup
   ledStrip.begin();
@@ -82,6 +88,11 @@ void setup() {
 }
 
 void loop() {
+  elapsedMicros usLoop = 0;
+  // if (!isRunning) {
+  //   return;
+  // };
+
   // Read Encoder
   static long priorPosition = 0;
   long newPosition = encoder.read();
@@ -147,7 +158,71 @@ void loop() {
   ledStrip.show();
 }
 
-inline bool wrap(auto *unwrappedInput, const auto wrapLimit) {
+// =============================================================================
+// Start & Stop Acquisition Functions (called in trigger input interrupts)
+// =============================================================================
+static inline void startAcquisition(void) {
+  usSinceStart = 0;
+  startTimeMicros = usSinceStart;
+  isRunning = true;
+  sendHeader();
+}
+static inline void stopAcquisition(void) { isRunning = false; }  // todo
+
+// =============================================================================
+// TASKS: DATA_TRANSFER
+// =============================================================================
+
+const String delimiter = ',';
+void sendHeader() {
+  Serial.flush();
+  Serial.print(String(String("timestamp [us]") + delimiter + "angle" +
+                      delimiter + "width" + delimiter + "color" + delimiter +
+                      "on" + "\n"));
+}
+
+void sendData() {
+  // Send Current state of lightSource in a dataframe
+  // float angle;
+  // float width;
+  // color_t color;
+  // volatile bool on;
+
+  // Convert to String class
+  const String timestamp = (uint32_t)usSinceStart;
+  const String angle = String(lightSource.angle);
+  const String width = String(lightSource.width);
+  const String color = String(lightSource.color);
+  const String on = String(lightSource.on);
+  const String endline = String("\n");
+
+  // Print ASCII Strings
+  Serial.print(timestamp + delimiter + angle + delimiter + width + delimiter +
+               color + delimiter + on + endline);
+}
+
+// =============================================================================
+// Input Trigger Interrupt functions
+// =============================================================================
+void handleTriggerRisingEdge(void) {
+  static elapsedMillis msSinceLastTrigger = 0;
+  if (!isRunning || (msSinceLastTrigger > 2000)) {
+    startAcquisition();
+  }
+  msSinceLastTrigger = 0;
+  attachInterrupt(TRIGGER_INPUT_PIN, handleTriggerFallingEdge, FALLING);
+}
+
+void handleTriggerFallingEdge(void) {
+  if (isRunning) {
+    sendData();
+  }
+}  // todo
+
+// =============================================================================
+// Help Functions for Rotary Encoder and LEDs
+// =============================================================================
+static inline bool wrap(auto *unwrappedInput, const auto wrapLimit) {
   // wraps input to within range of +/- wrapLimit
   bool isChanged = false;
   while (abs(*unwrappedInput) > wrapLimit) {
@@ -163,20 +238,8 @@ inline float normalizeEncoderPosition(const auto encoderCount) {
   return normAngle;
 }
 
-void toggleColor(void) {
+static inline void toggleColor(void) {
   static int currentColorIndex = 0;
   currentColorIndex = (currentColorIndex + 1) % numColorOptions;
   lightSource.color = colorOption[currentColorIndex];
-}
-
-void handleButtonDown(void) {}
-void handleButtonUp(void) {
-  //
-}
-
-void handleTriggerInput() {
-  static elapsedMicros usSinceLastTrigger = 0;
-  if (usSinceLastTrigger > 1000000) {  // todo
-    Serial.println(lightSource.angle);
-  }
 }
