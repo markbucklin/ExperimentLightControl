@@ -12,11 +12,17 @@ Encoder encoder(ENCODER_PIN_A, ENCODER_PIN_B);
 // ON/OFF Button
 const int ONOFF_BUTTON_PIN = 21;
 
-// TRIGGER INPUT
+// TRIGGER INPUT & TIMING
 const int TRIGGER_INPUT_PIN = 0;
+const uint32_t frameTimeoutMicros = 2 * 1000000;
+elapsedMicros microsSinceAcquisitionStart;
+elapsedMicros microsSinceFrameStart;
+volatile time_t currentFrameTimestamp;
+volatile time_t currentFrameDuration;
+volatile uint32_t currentFrameCount;
+
+// STATUS
 volatile bool isRunning = false;
-elapsedMicros usSinceStart;
-volatile uint32_t startTimeMicros;
 
 // LED
 #include <WS2812Serial.h>
@@ -46,18 +52,30 @@ typedef struct {
 } radial_light_source_t;
 radial_light_source_t lightSource = {0, 0.2, RED, true};
 
+// todo
+typedef struct {
+  uint32_t count;
+  time_t timestamp;
+  time_t duration;
+  radial_light_source_t data;
+} frame_data_t;
+
 // =============================================================================
 // Function Declarations
 // =============================================================================
+static inline void beginAcquisition(void);
+static inline void beginDataFrame(void);
+static inline void endDataFrame(void);
+static inline void endAcquisition(void);
+static void sendHeader();
+static void sendData();
+void handleTriggerRisingEdge(void);
+void handleTriggerFallingEdge(void);
+static inline void handleFrameTimeout(void);
+bool updateLightSource(radial_light_source_t *);
 static inline bool wrap(auto *unwrappedInput, const auto wrapLimit);
 inline float normalizeEncoderPosition(const auto encoderCount);
 static inline void toggleColor(void);
-void handleTriggerRisingEdge(void);
-void handleTriggerFallingEdge(void);
-static inline void startAcquisition(void);
-static inline void stopAcquisition(void);
-static void sendHeader();
-static void sendData();
 
 // =============================================================================
 // Setup & Loop
@@ -78,96 +96,50 @@ void setup() {
   digitalWrite(ONOFF_BUTTON_PIN - 1, LOW);
   pinMode(ONOFF_BUTTON_PIN, INPUT_PULLUP);
 
-  // Trigger Input
-  pinMode(TRIGGER_INPUT_PIN, INPUT);
-  attachInterrupt(TRIGGER_INPUT_PIN, handleTriggerRisingEdge, RISING);
-
   // LED Setup
   ledStrip.begin();
   delay(10);
+
+  // Trigger Input
+  pinMode(TRIGGER_INPUT_PIN, INPUT);
+  isRunning = false;
+  attachInterrupt(TRIGGER_INPUT_PIN, handleTriggerRisingEdge, RISING);
 }
 
 void loop() {
-  elapsedMicros usLoop = 0;
-  // if (!isRunning) {
-  //   return;
-  // };
+  handleFrameTimeout();
 
-  // Read Encoder
-  static long priorPosition = 0;
-  long newPosition = encoder.read();
-  if (newPosition != priorPosition) {
-    if (wrap(&newPosition, ENCODER_COUNTS_PER_REV / 2)) {
-      encoder.write(newPosition);
-    }
-  }
-  priorPosition = newPosition;
-
-  // Calculate Updated Angle/Boundaries
-  lightSource.angle = normalizeEncoderPosition(newPosition);
-  auto sourceLeftBound = lightSource.angle - lightSource.width / 2;
-  auto sourceRightBound = lightSource.angle + lightSource.width / 2;
-  auto ledLeftBound = sourceLeftBound * LED_COUNT;
-  auto ledRightBound = sourceRightBound * LED_COUNT;
-
-  static elapsedMillis millisSinceToggle = 0;
-  if (digitalRead(ENCODER_PIN_BUTTON) == LOW) {
-    if (millisSinceToggle > 150) {
-      toggleColor();
-      millisSinceToggle = 0;
-    }
-  }
-
-  if (digitalRead(ONOFF_BUTTON_PIN) == LOW) {
-    lightSource.on = true;
-  } else {
-    lightSource.on = false;
-  }
-
-  // Update ledStrip
-  if (lightSource.on) {
-    // Most common case -> not wrapping around ends of strip
-    auto *pxLower = &ledLeftBound;
-    auto *pxUpper = &ledRightBound;
-    wrap(pxUpper, LED_COUNT / 2);
-    wrap(pxLower, LED_COUNT / 2);
-    auto inBtwVal = lightSource.color;
-    auto outBtwVal = 0;
-    if ((*pxLower) > (*pxUpper)) {
-      // Switch upper and lower limit
-      pxUpper = &ledLeftBound;
-      pxLower = &ledRightBound;
-      outBtwVal = inBtwVal;
-      inBtwVal = 0;
-    }
-    for (int i = 0; i < ledStrip.numPixels(); i++) {
-      auto pxPosition = i - LED_COUNT / 2;
-      // Check if pixel at current index [i] is in range around angle
-      if (pxPosition >= *pxLower && pxPosition <= *pxUpper) {
-        ledStrip.setPixel(i, inBtwVal);
-      } else {
-        ledStrip.setPixel(i, outBtwVal);
-      }
-    }
-  } else {
-    // All LEDs Off
-    for (int i = 0; i < ledStrip.numPixels(); i++) {
-      ledStrip.setPixel(i, 0);
-    }
-  }
-  ledStrip.show();
+  updateLightSource(&lightSource);
 }
 
 // =============================================================================
 // Start & Stop Acquisition Functions (called in trigger input interrupts)
 // =============================================================================
-static inline void startAcquisition(void) {
-  usSinceStart = 0;
-  startTimeMicros = usSinceStart;
-  isRunning = true;
+static inline void beginAcquisition(void) {
   sendHeader();
+  isRunning = true;
+  currentFrameCount = 0;
+  microsSinceAcquisitionStart = 0;
+  microsSinceFrameStart = microsSinceAcquisitionStart;
+  currentFrameDuration = microsSinceFrameStart;
+  beginDataFrame();
+  attachInterrupt(TRIGGER_INPUT_PIN, handleTriggerFallingEdge, FALLING);
 }
-static inline void stopAcquisition(void) { isRunning = false; }  // todo
+static inline void beginDataFrame(void) {
+  // Latch timestamp and designate/allocate current sample
+  microsSinceFrameStart -= currentFrameDuration;
+  currentFrameTimestamp = microsSinceAcquisitionStart;
+  currentFrameCount++;
+}
+static inline void endDataFrame(void) {
+  // Latch Frame Duration and Send Data
+  currentFrameDuration = microsSinceFrameStart;
+}
+static inline void endAcquisition(void) {
+  // Change running state and reset trigger interrupt to rising edge
+  isRunning = false;
+  attachInterrupt(TRIGGER_INPUT_PIN, handleTriggerRisingEdge, RISING);
+}
 
 // =============================================================================
 // TASKS: DATA_TRANSFER
@@ -181,8 +153,6 @@ void sendHeader() {
                       "on" + "\n"));
 }
 
-volatile uint32_t currentFrameTimestamp;
-// volatile radial_light_source_t lightSourceStateOnRising;
 void sendData() {
   // Send Current state of lightSource in a dataframe
   // float angle;
@@ -206,37 +176,104 @@ void sendData() {
 // =============================================================================
 // Input Trigger Interrupt functions
 // =============================================================================
-volatile uint32_t lastTriggerMillis = millis();
 void handleTriggerRisingEdge(void) {
-  // static elapsedMillis msSinceLastTrigger = 0;
-  uint32_t msSinceLastTrigger = millis() - lastTriggerMillis;
-  if (!isRunning || (msSinceLastTrigger > 2000)) {
-    startAcquisition();
+  // todo: debounce
+  if (!isRunning) {
+    beginAcquisition();
   }
-  // msSinceLastTrigger = 0;
-  // memcpy(&lightSourceStateOnRising, &lightSource, sizeof(lightSource));
-  lastTriggerMillis = millis();
-  currentFrameTimestamp = usSinceStart;
-  attachInterrupt(TRIGGER_INPUT_PIN, handleTriggerFallingEdge, FALLING);
 }
 
 void handleTriggerFallingEdge(void) {
-  uint32_t msSinceLastTrigger = millis() - lastTriggerMillis;
-  if (!isRunning || (msSinceLastTrigger > 2000)) {
-    startAcquisition();
-  }
-  lastTriggerMillis = millis();
-  currentFrameTimestamp = usSinceStart;
-
   if (isRunning) {
+    endDataFrame();
     sendData();
+    beginDataFrame();
   }
-  // attachInterrupt(TRIGGER_INPUT_PIN, handleTriggerRisingEdge, RISING);
+}
+static inline void handleFrameTimeout(void) {
+  // Acquisition Timeout
+  if (isRunning) {
+    if (microsSinceFrameStart > frameTimeoutMicros) {
+      endAcquisition();
+    }
+  }
 }
 
 // =============================================================================
 // Help Functions for Rotary Encoder and LEDs
 // =============================================================================
+bool updateLightSource(radial_light_source_t *lightSourcePointer) {
+  // create reference to light-source for code clarity
+  radial_light_source_t &lightSourceRef = *lightSourcePointer;
+
+  // Read Encoder
+  static long priorPosition = 0;
+  long newPosition = encoder.read();
+  if (newPosition != priorPosition) {
+    if (wrap(&newPosition, ENCODER_COUNTS_PER_REV / 2)) {
+      encoder.write(newPosition);
+    }
+  }
+  priorPosition = newPosition;
+
+  // Calculate Updated Angle/Boundaries
+  lightSourceRef.angle = normalizeEncoderPosition(newPosition);
+  auto sourceLeftBound = lightSourceRef.angle - lightSourceRef.width / 2;
+  auto sourceRightBound = lightSourceRef.angle + lightSourceRef.width / 2;
+  auto ledLeftBound = sourceLeftBound * LED_COUNT;
+  auto ledRightBound = sourceRightBound * LED_COUNT;
+
+  static elapsedMillis millisSinceToggle = 0;
+  if (digitalRead(ENCODER_PIN_BUTTON) == LOW) {
+    if (millisSinceToggle > 150) {
+      toggleColor();
+      millisSinceToggle = 0;
+    }
+  }
+
+  if (digitalRead(ONOFF_BUTTON_PIN) == LOW) {
+    lightSourceRef.on = true;
+  } else {
+    lightSourceRef.on = false;
+  }
+
+  // Update ledStrip
+  if (lightSourceRef.on) {
+    // Most common case -> not wrapping around ends of strip
+    auto *pxLower = &ledLeftBound;
+    auto *pxUpper = &ledRightBound;
+    wrap(pxUpper, LED_COUNT / 2);
+    wrap(pxLower, LED_COUNT / 2);
+    auto inBtwVal = lightSourceRef.color;
+    auto outBtwVal = 0;
+    if ((*pxLower) > (*pxUpper)) {
+      // Switch upper and lower limit
+      pxUpper = &ledLeftBound;
+      pxLower = &ledRightBound;
+      outBtwVal = inBtwVal;
+      inBtwVal = 0;
+    }
+    for (int i = 0; i < ledStrip.numPixels(); i++) {
+      auto pxPosition = i - LED_COUNT / 2;
+      // Check if pixel at current index [i] is in range around angle
+      if (pxPosition >= *pxLower && pxPosition <= *pxUpper) {
+        ledStrip.setPixel(i, inBtwVal);
+      } else {
+        ledStrip.setPixel(i, outBtwVal);
+      }
+    }
+  } else {
+    // All LEDs Off
+    for (int i = 0; i < ledStrip.numPixels(); i++) {
+      ledStrip.setPixel(i, 0);
+    }
+  }
+
+  // Update LEDs and return current light-source specification
+  ledStrip.show();
+  return true;
+}
+
 static inline bool wrap(auto *unwrappedInput, const auto wrapLimit) {
   // wraps input to within range of +/- wrapLimit
   bool isChanged = false;
