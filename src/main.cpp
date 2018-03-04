@@ -181,6 +181,8 @@ void sendHeader() {
                       "on" + "\n"));
 }
 
+volatile uint32_t currentFrameTimestamp;
+// volatile radial_light_source_t lightSourceStateOnRising;
 void sendData() {
   // Send Current state of lightSource in a dataframe
   // float angle;
@@ -189,10 +191,10 @@ void sendData() {
   // volatile bool on;
 
   // Convert to String class
-  const String timestamp = (uint32_t)usSinceStart;
+  const String timestamp = currentFrameTimestamp;
   const String angle = String(lightSource.angle);
   const String width = String(lightSource.width);
-  const String color = String(lightSource.color);
+  const String color = String(lightSource.color, HEX);
   const String on = String(lightSource.on);
   const String endline = String("\n");
 
@@ -204,20 +206,33 @@ void sendData() {
 // =============================================================================
 // Input Trigger Interrupt functions
 // =============================================================================
+volatile uint32_t lastTriggerMillis = millis();
 void handleTriggerRisingEdge(void) {
-  static elapsedMillis msSinceLastTrigger = 0;
+  // static elapsedMillis msSinceLastTrigger = 0;
+  uint32_t msSinceLastTrigger = millis() - lastTriggerMillis;
   if (!isRunning || (msSinceLastTrigger > 2000)) {
     startAcquisition();
   }
-  msSinceLastTrigger = 0;
+  // msSinceLastTrigger = 0;
+  // memcpy(&lightSourceStateOnRising, &lightSource, sizeof(lightSource));
+  lastTriggerMillis = millis();
+  currentFrameTimestamp = usSinceStart;
   attachInterrupt(TRIGGER_INPUT_PIN, handleTriggerFallingEdge, FALLING);
 }
 
 void handleTriggerFallingEdge(void) {
+  uint32_t msSinceLastTrigger = millis() - lastTriggerMillis;
+  if (!isRunning || (msSinceLastTrigger > 2000)) {
+    startAcquisition();
+  }
+  lastTriggerMillis = millis();
+  currentFrameTimestamp = usSinceStart;
+
   if (isRunning) {
     sendData();
   }
-}  // todo
+  // attachInterrupt(TRIGGER_INPUT_PIN, handleTriggerRisingEdge, RISING);
+}
 
 // =============================================================================
 // Help Functions for Rotary Encoder and LEDs
