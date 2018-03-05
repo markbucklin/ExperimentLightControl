@@ -23,7 +23,7 @@ const uint32_t frameTimeoutMicros = 2 * 1000000;
 elapsedMicros microsSinceAcquisitionStart;
 elapsedMicros microsSinceFrameStart;
 volatile time_t currentFrameTimestamp;
-volatile time_t currentFrameDuration;
+// volatile time_t currentFrameDuration;
 volatile uint32_t currentFrameCount;
 
 // STATUS
@@ -58,18 +58,22 @@ typedef struct {
 radial_light_source_t lightSource = {0, 0.2, RED, true};
 
 // todo
+#include <queue.h>
 typedef struct {
   uint32_t count;
   time_t timestamp;
   time_t duration;
   radial_light_source_t data;
 } frame_data_t;
+etl::queue<frame_data_t, 8> frameDataQueue;
+frame_data_t &currentFrameData = frameDataQueue.front();
 
 // =============================================================================
 // Function Declarations
 // =============================================================================
 static inline void beginAcquisition(void);
 static inline void beginDataFrame(void);
+void fillDataFrame(const radial_light_source_t &data);
 static inline void endDataFrame(void);
 static inline void endAcquisition(void);
 static void sendHeader();
@@ -115,6 +119,8 @@ void loop() {
   handleFrameTimeout();
 
   updateLightSource(&lightSource);
+  // Keep Filling currentFrameData with most recent State of light source
+  fillDataFrame(lightSource);
 }
 
 // =============================================================================
@@ -123,10 +129,15 @@ void loop() {
 static inline void beginAcquisition(void) {
   sendHeader();
   isRunning = true;
+
+  // Clear Frame-Data Queue
+  frameDataQueue.clear();
+
+  // Initialize Session & Frame Timers & Frame Counter
   currentFrameCount = 0;
   microsSinceAcquisitionStart = 0;
   microsSinceFrameStart = microsSinceAcquisitionStart;
-  currentFrameDuration = microsSinceFrameStart;
+  // currentFrameDuration = microsSinceFrameStart;
   beginDataFrame();
   attachInterrupt(TRIGGER_INPUT_PIN, handleTriggerFallingEdge, FALLING);
 }
@@ -137,11 +148,22 @@ static inline void beginDataFrame(void) {
   // microsSinceFrameStart -= currentFrameDuration;
   microsSinceFrameStart = microsSinceAcquisitionStart - currentFrameTimestamp;
   // Increment Frame Counter
-  currentFrameCount++;
+  currentFrameCount += 1;
+
+  // Push/emplace empty first frame into queue and get reference
+  currentFrameData = frameDataQueue.push();
+
+  // Fill with data thats available at beginning of data-frame
+  currentFrameData.count = currentFrameCount;
+  currentFrameData.timestamp = currentFrameTimestamp;
+}
+void fillDataFrame(const radial_light_source_t &data) {
+  memcpy(&(currentFrameData.data), &data, sizeof(data));
 }
 static inline void endDataFrame(void) {
   // Latch Frame Duration and Send Data
-  currentFrameDuration = microsSinceFrameStart;
+  // currentFrameDuration = microsSinceFrameStart;
+  currentFrameData.duration = microsSinceFrameStart;
 }
 static inline void endAcquisition(void) {
   // Change running state and reset trigger interrupt to rising edge
@@ -167,6 +189,10 @@ void sendData() {
   // float width;
   // color_t color;
   // volatile bool on;
+
+  // todo-------------here  frameDataQueue.pop()
+  // framedata.count, framedata.timestamp, framedata.duration
+  // framedata.data
 
   // Convert to String class
   const String timestamp = currentFrameTimestamp;
