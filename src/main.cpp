@@ -3,7 +3,7 @@
 // March 4, 2018
 
 #include <Arduino.h>
-#include <digitalWriteFast.h>
+#include <DigitalIO.h>
 #include <math.h>
 
 // Control
