@@ -232,14 +232,14 @@ bool updateLightSource(radial_light_source_t *lightSourcePointer) {
   auto ledRightBound = sourceRightBound * LED_COUNT;
 
   static elapsedMillis millisSinceToggle = 0;
-  if (digitalRead(ENCODER_PIN_BUTTON) == LOW) {
+  if (fastDigitalRead(ENCODER_PIN_BUTTON) == LOW) {
     if (millisSinceToggle > 150) {
       toggleColor();
       millisSinceToggle = 0;
     }
   }
 
-  if (digitalRead(ONOFF_BUTTON_PIN) == LOW) {
+  if (fastDigitalRead(ONOFF_BUTTON_PIN) == LOW) {
     lightSourceRef.on = true;
   } else {
     lightSourceRef.on = false;
