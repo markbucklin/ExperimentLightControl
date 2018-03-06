@@ -57,23 +57,26 @@ typedef struct {
 } radial_light_source_t;
 radial_light_source_t lightSource = {0, 0.2, RED, true};
 
-// todo
+// ETL ETL ETL  ETL  ETL  ETL  ETL  ETL  ETL
 #include <queue.h>
 typedef struct {
   uint32_t count;
-  time_t timestamp;
+  uint64_t timestamp;
   time_t duration;
   radial_light_source_t data;
-} frame_data_t;
-etl::queue<frame_data_t, 8> frameDataQueue;
-frame_data_t &currentFrameData = frameDataQueue.front();
+  bool filled;
+} triggered_frame_t;
+
+typedef etl::queue<triggered_frame_t, 8> frame_queue_t;
+frame_queue_t frameDataQueue = {};
+triggered_frame_t &currentFrameData = frameDataQueue.front();
 
 // =============================================================================
 // Function Declarations
 // =============================================================================
 static inline void beginAcquisition(void);
 static inline void beginDataFrame(void);
-void fillDataFrame(const radial_light_source_t &data);
+const triggered_frame_t &fillDataFrame(const radial_light_source_t &data);
 static inline void endDataFrame(void);
 static inline void endAcquisition(void);
 static void sendHeader();
@@ -84,7 +87,7 @@ static inline void handleFrameTimeout(void);
 bool updateLightSource(radial_light_source_t *);
 static inline bool wrap(auto *unwrappedInput, const auto wrapLimit);
 inline float normalizeEncoderPosition(const auto encoderCount);
-static inline void toggleColor(void);
+static inline void toggleColor(color_t *);
 
 // =============================================================================
 // Setup & Loop
@@ -119,8 +122,11 @@ void loop() {
   handleFrameTimeout();
 
   updateLightSource(&lightSource);
+
   // Keep Filling currentFrameData with most recent State of light source
-  fillDataFrame(lightSource);
+  if (currentFrameData.filled != true) {
+    currentFrameData = fillDataFrame(lightSource);
+  }
 }
 
 // =============================================================================
@@ -157,8 +163,10 @@ static inline void beginDataFrame(void) {
   currentFrameData.count = currentFrameCount;
   currentFrameData.timestamp = currentFrameTimestamp;
 }
-void fillDataFrame(const radial_light_source_t &data) {
+const triggered_frame_t &fillDataFrame(const radial_light_source_t &data) {
   memcpy(&(currentFrameData.data), &data, sizeof(data));
+  currentFrameData.filled = true;
+  return currentFrameData;
 }
 static inline void endDataFrame(void) {
   // Latch Frame Duration and Send Data
@@ -211,7 +219,8 @@ void sendData() {
 // Input Trigger Interrupt functions
 // =============================================================================
 void handleTriggerRisingEdge(void) {
-  // todo: debounce
+  // Handle first rising edge of first trigger
+  // (interrupt only active if isRunning = false)
   if (!isRunning) {
     beginAcquisition();
   }
@@ -260,7 +269,7 @@ bool updateLightSource(radial_light_source_t *lightSourcePointer) {
   static elapsedMillis millisSinceToggle = 0;
   if (fastDigitalRead(ENCODER_PIN_BUTTON) == LOW) {
     if (millisSinceToggle > 150) {
-      toggleColor();
+      toggleColor(&(lightSourceRef.color));
       millisSinceToggle = 0;
     }
   }
@@ -324,8 +333,8 @@ inline float normalizeEncoderPosition(const auto encoderCount) {
   return normAngle;
 }
 
-static inline void toggleColor(void) {
+static inline void toggleColor(color_t *colorPtr) {
   static int currentColorIndex = 0;
   currentColorIndex = (currentColorIndex + 1) % numColorOptions;
-  lightSource.color = colorOption[currentColorIndex];
+  *colorPtr = colorOption[currentColorIndex];
 }
