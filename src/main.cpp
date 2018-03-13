@@ -30,7 +30,7 @@ volatile bool isRunning = false;
 
 // LED
 #include <WS2812Serial.h>
-const int LED_COUNT = 64;
+const int LED_COUNT = 52;
 const int LED_PIN = 10;
 byte drawingMemory[LED_COUNT * 3];          //  3 bytes per LED
 DMAMEM byte displayMemory[LED_COUNT * 12];  // 12 bytes per LED
