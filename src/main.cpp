@@ -3,7 +3,6 @@
 // March 4, 2018
 
 #include <Arduino.h>
-#include <math.h>
 
 // Control
 #include <Encoder.h>
@@ -77,9 +76,31 @@ void handleTriggerRisingEdge(void);
 void handleTriggerFallingEdge(void);
 static inline void handleFrameTimeout(void);
 bool updateLightSource(radial_light_source_t *);
-static inline bool wrap(auto *unwrappedInput, const auto wrapLimit);
-inline float normalizeEncoderPosition(const auto encoderCount);
+inline float normalizeEncoderPosition(const float encoderCount);
 static inline void toggleColor(void);
+
+// static inline bool wrap(float *unwrappedInput, const float wrapLimit);
+template <typename T1, typename T2>
+T1 wrap(T1 phi, const T2 wrapLimit) {
+  // wraps input to within range of +/- wrapLimit
+  while ((abs(phi) - wrapLimit) > 0) {
+    phi -= copysign(2 * wrapLimit, phi);
+    // note: copysign(x,y) -> returns a value with the magnitude of x and the
+    // sign of y
+  }
+  return phi;
+}
+// static inline bool wrap(T1 *unwrappedInput, const T2 wrapLimit) {
+//   // wraps input to within range of +/- wrapLimit
+//   bool isChanged = false;
+//   while (abs(*unwrappedInput) > static_cast<T1>(wrapLimit)) {
+//     *unwrappedInput -=
+//         copysign(2 * static_cast<T1>(wrapLimit), *unwrappedInput);
+// Returns a value with the magnitude of x and the sign of y
+//     isChanged = true;
+//   }
+//   return isChanged;
+// }
 
 // =============================================================================
 // Setup & Loop
@@ -214,18 +235,20 @@ bool updateLightSource(radial_light_source_t *lightSourcePointer) {
   static long priorPosition = 0;
   long newPosition = encoder.read();
   if (newPosition != priorPosition) {
-    if (wrap(&newPosition, ENCODER_COUNTS_PER_REV / 2)) {
-      encoder.write(newPosition);
-    }
+    // Wrap to zero centered range [-.5 to 0.5] and write fixed val back
+    encoder.write(wrap(newPosition, ENCODER_COUNTS_PER_REV / 2));
+    // if (wrap(&newPosition, ENCODER_COUNTS_PER_REV / 2)) {
+    //   encoder.write(newPosition);
+    // }
   }
   priorPosition = newPosition;
 
   // Calculate Updated Angle/Boundaries
   lightSourceRef.angle = normalizeEncoderPosition(newPosition);
-  auto sourceLeftBound = lightSourceRef.angle - lightSourceRef.width / 2;
-  auto sourceRightBound = lightSourceRef.angle + lightSourceRef.width / 2;
-  auto ledLeftBound = sourceLeftBound * LED_COUNT;
-  auto ledRightBound = sourceRightBound * LED_COUNT;
+  float sourceLeftBound = lightSourceRef.angle - lightSourceRef.width / 2;
+  float sourceRightBound = lightSourceRef.angle + lightSourceRef.width / 2;
+  float ledLeftBound = sourceLeftBound * LED_COUNT;
+  float ledRightBound = sourceRightBound * LED_COUNT;
 
   static elapsedMillis millisSinceToggle = 0;
   if (digitalRead(ENCODER_PIN_BUTTON) == LOW) {
@@ -243,20 +266,24 @@ bool updateLightSource(radial_light_source_t *lightSourcePointer) {
 
   // Update ledStrip
   if (lightSourceRef.on) {
+    float *pxUpper;
+    float *pxLower;
+    float outBtwVal;
+    float inBtwVal;
     // Most common case -> not wrapping around ends of strip
-    auto *pxLower = &ledLeftBound;
-    auto *pxUpper = &ledRightBound;
-    wrap(pxUpper, LED_COUNT / 2);
-    wrap(pxLower, LED_COUNT / 2);
-    auto inBtwVal = lightSourceRef.color;
-    auto outBtwVal = 0;
-    if ((*pxLower) > (*pxUpper)) {
+    if (ledLeftBound > ledRightBound) {
       // Switch upper and lower limit
       pxUpper = &ledLeftBound;
       pxLower = &ledRightBound;
-      outBtwVal = inBtwVal;
+      outBtwVal = lightSourceRef.color;
       inBtwVal = 0;
+    } else {
+      pxUpper = &ledRightBound;
+      pxLower = &ledLeftBound;
+      inBtwVal = lightSourceRef.color;
+      outBtwVal = 0;
     }
+    // Selectively turn on LEDs between pxUpper and pxLower
     for (int i = 0; i < ledStrip.numPixels(); i++) {
       auto pxPosition = i - LED_COUNT / 2;
       // Check if pixel at current index [i] is in range around angle
@@ -278,19 +305,9 @@ bool updateLightSource(radial_light_source_t *lightSourcePointer) {
   return true;
 }
 
-static inline bool wrap(auto *unwrappedInput, const auto wrapLimit) {
-  // wraps input to within range of +/- wrapLimit
-  bool isChanged = false;
-  while (abs(*unwrappedInput) > wrapLimit) {
-    *unwrappedInput -= copysign(2 * wrapLimit, *unwrappedInput);
-    isChanged = true;
-  }
-  return isChanged;
-}
-
-inline float normalizeEncoderPosition(const auto encoderCount) {
+inline float normalizeEncoderPosition(const float encoderCount) {
   // maps rotary encoder count to normalized position in rotation
-  float normAngle = (float)encoderCount / ENCODER_COUNTS_PER_REV;
+  float normAngle = (float)encoderCount / (float)ENCODER_COUNTS_PER_REV;
   return normAngle;
 }
 
