@@ -90,17 +90,6 @@ T1 wrap(T1 phi, const T2 wrapLimit) {
   }
   return phi;
 }
-// static inline bool wrap(T1 *unwrappedInput, const T2 wrapLimit) {
-//   // wraps input to within range of +/- wrapLimit
-//   bool isChanged = false;
-//   while (abs(*unwrappedInput) > static_cast<T1>(wrapLimit)) {
-//     *unwrappedInput -=
-//         copysign(2 * static_cast<T1>(wrapLimit), *unwrappedInput);
-// Returns a value with the magnitude of x and the sign of y
-//     isChanged = true;
-//   }
-//   return isChanged;
-// }
 
 // =============================================================================
 // Setup & Loop
